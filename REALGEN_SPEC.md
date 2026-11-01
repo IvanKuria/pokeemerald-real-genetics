@@ -12,8 +12,8 @@ Breeding in Emerald, rewritten to follow real Mendelian genetics, as shown in th
    - Each variant allele has frequency q = 1/√20000, so each colour is 1 in 20,000 in the wild, and about 1 in 71 wild Pokémon carry it.
 3. **Shiny is a recessive gene.** q = 1/√8192, so wild shinies stay exactly 1 in 8,192, and about 1 in 46 wild Pokémon carry it. Shiny = s/s.
 4. **IVs are polygenic.** Each stat is set by 5 genes × 2 copies, each copy 0 or 1, with wild frequency 0.5. The stat's IV = round(31 × (number of 1 copies) / 10), so IVs take 11 values: 0, 3, 6, 9, 12, 16, 19, 22, 25, 28, 31.
-5. **Lethal recessives.** A wild Pokémon carries Poisson(0.58) hidden lethal alleles at random among loci 1–15. An egg with two copies at any locus **never hatches**: when it would hatch, it shows "The EGG didn't hatch…" and is removed.
-   - In the simulation there were 2,000 loci. Here, each Pokémon stores at most 2 carried loci.
+5. **Lethal recessives.** A wild Pokémon carries Poisson(0.58) hidden lethal alleles at random among loci 1 to 127, and keeps at most ONE (if it would carry 2 or more, one is kept at random). An egg with two copies at the same locus **never hatches**: when it would hatch, it shows "The EGG didn't hatch…" and is removed. Random wild pairs almost never make a dead egg; related pairs (siblings) do much more often.
+   - In the simulation there were 2,000 loci and Pokémon carried several. Here there are 127 loci and each Pokémon stores at most 1 carried allele, plus a "dead" bit for an egg with two copies.
 6. **Species barrier.** Only Pokémon from the same evolution family can breed (same egg species).
 7. **Ditto** works like the Amazon molly (gynogenesis): the egg is a full genetic copy of the non-Ditto parent. Ditto × Ditto makes nothing.
 
@@ -29,9 +29,9 @@ The genome is 77 bits, packed into bits vanilla never uses:
 | 16 | `PokemonSubstruct0.filler` | IV loci, part 2 |
 | 16 | `BoxPokemon.unknown` | 14 bits IV loci (part 3) + 2 bits shiny |
 | 4 | `BoxPokemon.unused` flag bits | coat c, e (2 + 2) |
-| 11 | `PokemonSubstruct3` ribbons that can never be earned in Emerald (marine, land, sky, country, national, earth, world, unusedRibbons ×4) | coat a (2) + lethal slots (2 × 4-bit locus id, 0 = empty) + `hasGenome` flag (1) |
+| 11 | `PokemonSubstruct3` ribbons that can never be earned in Emerald (marine, land, sky, country, national, earth, world, unusedRibbons ×4) | coat a (2) + lethal locus id (7 bits, 1..127, 0 = none) + dead bit (1, two copies at that id) + `hasGenome` flag (1) |
 
-60 + 2 + 6 + 8 + 1 = 77. The exact bit order is defined in `src/genetics.c` (`PackGenome` / `UnpackGenome`) and nowhere else.
+60 + 2 + 6 + 7 + 1 + 1 = 77. The exact bit order is defined in `src/genetics.c` (`PackGenome` / `UnpackGenome`) and nowhere else.
 
 **Old saves and traded-in Pokémon** (`hasGenome == 0`): the genome is synthesized deterministically.
 - IV loci: random arrangement with k = round(IV × 10 / 31) "1" copies, seeded from the personality value.
@@ -66,7 +66,7 @@ See the header. In short:
 
 **Build rule (8 GB machine):** always build with `~/Tools/gba/bin/locked-make`, never plain `make`. Only one build runs at a time.
 
-**Lethal encoding (amended):** there are only 8 bits for lethal genes, so there is no separate "two copies" flag. A slot = one carried copy. A child that gets two copies at the same locus stores that id in BOTH slots, which is exactly `GenomeIsLethal`. If a child would carry more than 2 distinct loci, keep 2 at random; this simulates the "carries a few" load.
+**Lethal encoding (amended again):** 8 bits hold the lethal genes: a 7-bit carried locus id (1..127, 0 = none) and 1 dead bit. In `struct Genome`, `lethal[0]` = the carried id and `lethal[1]` = the same id if the egg is dead, else 0; `GenomeIsLethal` = `lethal[0] && lethal[1] == lethal[0]`. Wild: Poisson(0.58) copies at random loci, keep 1 at random if 2 or more. Inheritance: each parent passes its carried copy with p = .5. Both passing the same id = dead egg (both slots), which always wins. Two different ids arrive = keep one at random. Legacy Pokémon carry none. (With 15 loci and 2 slots, random wild crosses died 1 in 194, far too often; siblings stay around 1 in 15.)
 
 **Core lane layering:**
 - `src/genetics.c` = pure logic (inheritance, wild generation, phenotype, personality solver). It only needs basic types and `Random()`, so it can be compiled on the host for tests.

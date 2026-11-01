@@ -13,6 +13,7 @@
 #include "event_data.h"
 #include "evolution_scene.h"
 #include "field_specials.h"
+#include "genetics.h"
 #include "item.h"
 #include "link.h"
 #include "main.h"
@@ -2209,6 +2210,7 @@ void CreateBoxMon(struct BoxPokemon *boxMon, u16 species, u8 level, u8 fixedIV, 
     u32 personality;
     u32 value;
     u16 checksum;
+    struct Genome genome;
 
     ZeroBoxMonData(boxMon);
 
@@ -2216,8 +2218,6 @@ void CreateBoxMon(struct BoxPokemon *boxMon, u16 species, u8 level, u8 fixedIV, 
         personality = fixedPersonality;
     else
         personality = Random32();
-
-    SetBoxMonData(boxMon, MON_DATA_PERSONALITY, &personality);
 
     // Determine original trainer ID
     if (otIdType == OT_ID_RANDOM_NO_SHINY)
@@ -2242,6 +2242,15 @@ void CreateBoxMon(struct BoxPokemon *boxMon, u16 species, u8 level, u8 fixedIV, 
               | (gSaveBlock2Ptr->playerTrainerId[3] << 24);
     }
 
+    // Wild genome. A random personality is re-solved so vanilla shininess follows the genome; a fixed personality
+    // (or a forced non-shiny OT) keeps its vanilla shininess and the shiny alleles are set to match it.
+    GenerateWildGenome(&genome);
+    if (hasFixedPersonality || otIdType == OT_ID_RANDOM_NO_SHINY)
+        MatchGenomeShininess(&genome, GET_SHINY_VALUE(value, personality) < SHINY_ODDS);
+    else
+        personality = SolvePersonalityForShiny(personality, value, GenomeIsShiny(&genome));
+
+    SetBoxMonData(boxMon, MON_DATA_PERSONALITY, &personality);
     SetBoxMonData(boxMon, MON_DATA_OT_ID, &value);
 
     checksum = CalculateBoxMonChecksum(boxMon);
@@ -2262,35 +2271,16 @@ void CreateBoxMon(struct BoxPokemon *boxMon, u16 species, u8 level, u8 fixedIV, 
     SetBoxMonData(boxMon, MON_DATA_POKEBALL, &value);
     SetBoxMonData(boxMon, MON_DATA_OT_GENDER, &gSaveBlock2Ptr->playerGender);
 
+    // Random IVs come from the genome's IV loci; fixed IVs rewrite them.
+    SetBoxMonGenome(boxMon, &genome);
     if (fixedIV < USE_RANDOM_IVS)
     {
-        SetBoxMonData(boxMon, MON_DATA_HP_IV, &fixedIV);
-        SetBoxMonData(boxMon, MON_DATA_ATK_IV, &fixedIV);
-        SetBoxMonData(boxMon, MON_DATA_DEF_IV, &fixedIV);
-        SetBoxMonData(boxMon, MON_DATA_SPEED_IV, &fixedIV);
-        SetBoxMonData(boxMon, MON_DATA_SPATK_IV, &fixedIV);
-        SetBoxMonData(boxMon, MON_DATA_SPDEF_IV, &fixedIV);
-    }
-    else
-    {
-        u32 iv;
-        value = Random();
+        u32 ivs = 0;
+        u32 i;
 
-        iv = value & MAX_IV_MASK;
-        SetBoxMonData(boxMon, MON_DATA_HP_IV, &iv);
-        iv = (value & (MAX_IV_MASK << 5)) >> 5;
-        SetBoxMonData(boxMon, MON_DATA_ATK_IV, &iv);
-        iv = (value & (MAX_IV_MASK << 10)) >> 10;
-        SetBoxMonData(boxMon, MON_DATA_DEF_IV, &iv);
-
-        value = Random();
-
-        iv = value & MAX_IV_MASK;
-        SetBoxMonData(boxMon, MON_DATA_SPEED_IV, &iv);
-        iv = (value & (MAX_IV_MASK << 5)) >> 5;
-        SetBoxMonData(boxMon, MON_DATA_SPATK_IV, &iv);
-        iv = (value & (MAX_IV_MASK << 10)) >> 10;
-        SetBoxMonData(boxMon, MON_DATA_SPDEF_IV, &iv);
+        for (i = 0; i < NUM_STATS; i++)
+            ivs |= fixedIV << (i * 5);
+        SetBoxMonData(boxMon, MON_DATA_IVS, &ivs);
     }
 
     if (gSpeciesInfo[species].abilities[1])
@@ -3635,6 +3625,150 @@ static union PokemonSubstruct *GetSubstruct(struct BoxPokemon *boxMon, u32 perso
     return substruct;
 }
 
+// Real genetics storage (REALGEN_SPEC.md). The 77-bit packed genome (bit order defined by PackGenome in genetics.c)
+// is spread, lowest bit first, across bits vanilla never uses:
+//   bits  0-29  PokemonSubstruct3 IV fields (hpIV, attackIV, defenseIV, speedIV, spAttackIV, spDefenseIV)
+//   bits 30-45  PokemonSubstruct0.filler
+//   bits 46-61  BoxPokemon.unknown
+//   bits 62-65  BoxPokemon.unused
+//   bits 66-76  PokemonSubstruct3 marine, land, sky, country, national, earth, world ribbons, unusedRibbons (4)
+// Callers must have the BoxPokemon decrypted.
+static void PutGenomeBits(u32 *packed, u32 *pos, u32 count, u32 value)
+{
+    u32 i;
+
+    for (i = 0; i < count; i++, (*pos)++)
+    {
+        if ((value >> i) & 1)
+            packed[*pos / 32] |= 1u << (*pos % 32);
+    }
+}
+
+static u32 TakeGenomeBits(const u32 *packed, u32 *pos, u32 count)
+{
+    u32 i, value = 0;
+
+    for (i = 0; i < count; i++, (*pos)++)
+        value |= ((packed[*pos / 32] >> (*pos % 32)) & 1) << i;
+    return value;
+}
+
+static void ReadBoxMonGenome(const struct BoxPokemon *boxMon, const struct PokemonSubstruct0 *substruct0, const struct PokemonSubstruct3 *substruct3, struct Genome *genome)
+{
+    u32 packed[GENOME_PACKED_WORDS] = {0};
+    u32 pos = 0;
+
+    PutGenomeBits(packed, &pos, 5, substruct3->hpIV);
+    PutGenomeBits(packed, &pos, 5, substruct3->attackIV);
+    PutGenomeBits(packed, &pos, 5, substruct3->defenseIV);
+    PutGenomeBits(packed, &pos, 5, substruct3->speedIV);
+    PutGenomeBits(packed, &pos, 5, substruct3->spAttackIV);
+    PutGenomeBits(packed, &pos, 5, substruct3->spDefenseIV);
+    PutGenomeBits(packed, &pos, 16, substruct0->filler);
+    PutGenomeBits(packed, &pos, 16, boxMon->unknown);
+    PutGenomeBits(packed, &pos, 4, boxMon->unused);
+    PutGenomeBits(packed, &pos, 1, substruct3->marineRibbon);
+    PutGenomeBits(packed, &pos, 1, substruct3->landRibbon);
+    PutGenomeBits(packed, &pos, 1, substruct3->skyRibbon);
+    PutGenomeBits(packed, &pos, 1, substruct3->countryRibbon);
+    PutGenomeBits(packed, &pos, 1, substruct3->nationalRibbon);
+    PutGenomeBits(packed, &pos, 1, substruct3->earthRibbon);
+    PutGenomeBits(packed, &pos, 1, substruct3->worldRibbon);
+    PutGenomeBits(packed, &pos, 4, substruct3->unusedRibbons);
+
+    if (!UnpackGenome(packed, genome))
+    {
+        // Old save or traded in: the IV fields still hold vanilla IVs.
+        u8 ivs[NUM_STATS];
+
+        ivs[STAT_HP] = substruct3->hpIV;
+        ivs[STAT_ATK] = substruct3->attackIV;
+        ivs[STAT_DEF] = substruct3->defenseIV;
+        ivs[STAT_SPEED] = substruct3->speedIV;
+        ivs[STAT_SPATK] = substruct3->spAttackIV;
+        ivs[STAT_SPDEF] = substruct3->spDefenseIV;
+        SynthesizeLegacyGenome(genome, ivs, boxMon->personality, boxMon->otId);
+    }
+}
+
+// Does not update the checksum.
+static void WriteBoxMonGenome(struct BoxPokemon *boxMon, struct PokemonSubstruct0 *substruct0, struct PokemonSubstruct3 *substruct3, const struct Genome *genome)
+{
+    u32 packed[GENOME_PACKED_WORDS];
+    u32 pos = 0;
+
+    PackGenome(genome, packed);
+    substruct3->hpIV = TakeGenomeBits(packed, &pos, 5);
+    substruct3->attackIV = TakeGenomeBits(packed, &pos, 5);
+    substruct3->defenseIV = TakeGenomeBits(packed, &pos, 5);
+    substruct3->speedIV = TakeGenomeBits(packed, &pos, 5);
+    substruct3->spAttackIV = TakeGenomeBits(packed, &pos, 5);
+    substruct3->spDefenseIV = TakeGenomeBits(packed, &pos, 5);
+    substruct0->filler = TakeGenomeBits(packed, &pos, 16);
+    boxMon->unknown = TakeGenomeBits(packed, &pos, 16);
+    boxMon->unused = TakeGenomeBits(packed, &pos, 4);
+    substruct3->marineRibbon = TakeGenomeBits(packed, &pos, 1);
+    substruct3->landRibbon = TakeGenomeBits(packed, &pos, 1);
+    substruct3->skyRibbon = TakeGenomeBits(packed, &pos, 1);
+    substruct3->countryRibbon = TakeGenomeBits(packed, &pos, 1);
+    substruct3->nationalRibbon = TakeGenomeBits(packed, &pos, 1);
+    substruct3->earthRibbon = TakeGenomeBits(packed, &pos, 1);
+    substruct3->worldRibbon = TakeGenomeBits(packed, &pos, 1);
+    substruct3->unusedRibbons = TakeGenomeBits(packed, &pos, 4);
+}
+
+void GetBoxMonGenome(const struct BoxPokemon *boxMon, struct Genome *genome)
+{
+    // Work on a copy so the caller's (const) Pokemon is never touched.
+    struct BoxPokemon copy = *boxMon;
+
+    DecryptBoxMon(&copy);
+    ReadBoxMonGenome(&copy,
+                     &(GetSubstruct(&copy, copy.personality, 0)->type0),
+                     &(GetSubstruct(&copy, copy.personality, 3)->type3),
+                     genome);
+}
+
+void SetBoxMonGenome(struct BoxPokemon *boxMon, const struct Genome *genome)
+{
+    u32 personality;
+
+    DecryptBoxMon(boxMon);
+    if (CalculateBoxMonChecksum(boxMon) != boxMon->checksum)
+    {
+        struct PokemonSubstruct3 *substruct3 = &(GetSubstruct(boxMon, boxMon->personality, 3)->type3);
+
+        boxMon->isBadEgg = TRUE;
+        boxMon->isEgg = TRUE;
+        substruct3->isEgg = TRUE;
+        EncryptBoxMon(boxMon);
+        return;
+    }
+
+    WriteBoxMonGenome(boxMon,
+                      &(GetSubstruct(boxMon, boxMon->personality, 0)->type0),
+                      &(GetSubstruct(boxMon, boxMon->personality, 3)->type3),
+                      genome);
+
+    // Shininess follows the genome: re-solve the personality, then re-key the data (substruct order and encryption
+    // both depend on it). Gender byte, ability bit and nature are kept.
+    personality = SolvePersonalityForShiny(boxMon->personality, boxMon->otId, GenomeIsShiny(genome));
+    if (personality != boxMon->personality)
+    {
+        union PokemonSubstruct substructs[4];
+        u32 i;
+
+        for (i = 0; i < 4; i++)
+            substructs[i] = *GetSubstruct(boxMon, boxMon->personality, i);
+        boxMon->personality = personality;
+        for (i = 0; i < 4; i++)
+            *GetSubstruct(boxMon, boxMon->personality, i) = substructs[i];
+    }
+
+    boxMon->checksum = CalculateBoxMonChecksum(boxMon);
+    EncryptBoxMon(boxMon);
+}
+
 /* GameFreak called GetMonData with either 2 or 3 arguments, for type
  * safety we have a GetMonData macro (in include/pokemon.h) which
  * dispatches to either GetMonData2 or GetMonData3 based on the number
@@ -3825,7 +3959,7 @@ u32 GetBoxMonData3(struct BoxPokemon *boxMon, s32 field, u8 *data)
         retVal = boxMon->checksum;
         break;
     case MON_DATA_ENCRYPT_SEPARATOR:
-        retVal = boxMon->unknown;
+        retVal = 0; // BoxPokemon.unknown holds the genome
         break;
     case MON_DATA_SPECIES:
         retVal = boxMon->isBadEgg ? SPECIES_EGG : substruct0->species;
@@ -3909,23 +4043,18 @@ u32 GetBoxMonData3(struct BoxPokemon *boxMon, s32 field, u8 *data)
         retVal = substruct3->otGender;
         break;
     case MON_DATA_HP_IV:
-        retVal = substruct3->hpIV;
-        break;
     case MON_DATA_ATK_IV:
-        retVal = substruct3->attackIV;
-        break;
     case MON_DATA_DEF_IV:
-        retVal = substruct3->defenseIV;
-        break;
     case MON_DATA_SPEED_IV:
-        retVal = substruct3->speedIV;
-        break;
     case MON_DATA_SPATK_IV:
-        retVal = substruct3->spAttackIV;
-        break;
     case MON_DATA_SPDEF_IV:
-        retVal = substruct3->spDefenseIV;
+    {
+        // IVs are computed from the genes; the IV fields hold genome bits.
+        struct Genome genome;
+        ReadBoxMonGenome(boxMon, substruct0, substruct3, &genome);
+        retVal = GenomeIV(&genome, field - MON_DATA_HP_IV);
         break;
+    }
     case MON_DATA_IS_EGG:
         retVal = substruct3->isEgg;
         break;
@@ -3963,28 +4092,14 @@ u32 GetBoxMonData3(struct BoxPokemon *boxMon, s32 field, u8 *data)
         retVal = substruct3->effortRibbon;
         break;
     case MON_DATA_MARINE_RIBBON:
-        retVal = substruct3->marineRibbon;
-        break;
     case MON_DATA_LAND_RIBBON:
-        retVal = substruct3->landRibbon;
-        break;
     case MON_DATA_SKY_RIBBON:
-        retVal = substruct3->skyRibbon;
-        break;
     case MON_DATA_COUNTRY_RIBBON:
-        retVal = substruct3->countryRibbon;
-        break;
     case MON_DATA_NATIONAL_RIBBON:
-        retVal = substruct3->nationalRibbon;
-        break;
     case MON_DATA_EARTH_RIBBON:
-        retVal = substruct3->earthRibbon;
-        break;
     case MON_DATA_WORLD_RIBBON:
-        retVal = substruct3->worldRibbon;
-        break;
     case MON_DATA_UNUSED_RIBBONS:
-        retVal = substruct3->unusedRibbons;
+        retVal = 0; // these bits hold the genome
         break;
     case MON_DATA_MODERN_FATEFUL_ENCOUNTER:
         retVal = substruct3->modernFatefulEncounter;
@@ -3995,13 +4110,17 @@ u32 GetBoxMonData3(struct BoxPokemon *boxMon, s32 field, u8 *data)
             retVal = SPECIES_EGG;
         break;
     case MON_DATA_IVS:
-        retVal = substruct3->hpIV
-              | (substruct3->attackIV << 5)
-              | (substruct3->defenseIV << 10)
-              | (substruct3->speedIV << 15)
-              | (substruct3->spAttackIV << 20)
-              | (substruct3->spDefenseIV << 25);
+    {
+        struct Genome genome;
+        ReadBoxMonGenome(boxMon, substruct0, substruct3, &genome);
+        retVal = GenomeIV(&genome, STAT_HP)
+              | (GenomeIV(&genome, STAT_ATK) << 5)
+              | (GenomeIV(&genome, STAT_DEF) << 10)
+              | (GenomeIV(&genome, STAT_SPEED) << 15)
+              | (GenomeIV(&genome, STAT_SPATK) << 20)
+              | (GenomeIV(&genome, STAT_SPDEF) << 25);
         break;
+    }
     case MON_DATA_KNOWN_MOVES:
         if (substruct0->species && !substruct3->isEgg)
         {
@@ -4034,13 +4153,7 @@ u32 GetBoxMonData3(struct BoxPokemon *boxMon, s32 field, u8 *data)
             retVal += substruct3->victoryRibbon;
             retVal += substruct3->artistRibbon;
             retVal += substruct3->effortRibbon;
-            retVal += substruct3->marineRibbon;
-            retVal += substruct3->landRibbon;
-            retVal += substruct3->skyRibbon;
-            retVal += substruct3->countryRibbon;
-            retVal += substruct3->nationalRibbon;
-            retVal += substruct3->earthRibbon;
-            retVal += substruct3->worldRibbon;
+            // marine, land, sky, country, national, earth and world hold the genome
         }
         break;
     case MON_DATA_RIBBONS:
@@ -4056,14 +4169,8 @@ u32 GetBoxMonData3(struct BoxPokemon *boxMon, s32 field, u8 *data)
                 | (substruct3->winningRibbon << (1 + CONTEST_RIBBON_BITS * 5 + 0))
                 | (substruct3->victoryRibbon << (1 + CONTEST_RIBBON_BITS * 5 + 1))
                 | (substruct3->artistRibbon << (1 + CONTEST_RIBBON_BITS * 5 + 2))
-                | (substruct3->effortRibbon << (1 + CONTEST_RIBBON_BITS * 5 + 3))
-                | (substruct3->marineRibbon << (1 + CONTEST_RIBBON_BITS * 5 + 4))
-                | (substruct3->landRibbon << (1 + CONTEST_RIBBON_BITS * 5 + 5))
-                | (substruct3->skyRibbon << (1 + CONTEST_RIBBON_BITS * 5 + 6))
-                | (substruct3->countryRibbon << (1 + CONTEST_RIBBON_BITS * 5 + 7))
-                | (substruct3->nationalRibbon << (1 + CONTEST_RIBBON_BITS * 5 + 8))
-                | (substruct3->earthRibbon << (1 + CONTEST_RIBBON_BITS * 5 + 9))
-                | (substruct3->worldRibbon << (1 + CONTEST_RIBBON_BITS * 5 + 10));
+                | (substruct3->effortRibbon << (1 + CONTEST_RIBBON_BITS * 5 + 3));
+            // marine, land, sky, country, national, earth and world hold the genome: always reported as not earned
         }
         break;
     default:
@@ -4215,8 +4322,7 @@ void SetBoxMonData(struct BoxPokemon *boxMon, s32 field, const void *dataArg)
         SET16(boxMon->checksum);
         break;
     case MON_DATA_ENCRYPT_SEPARATOR:
-        SET16(boxMon->unknown);
-        break;
+        break; // BoxPokemon.unknown holds the genome
     case MON_DATA_SPECIES:
     {
         SET16(substruct0->species);
@@ -4311,23 +4417,19 @@ void SetBoxMonData(struct BoxPokemon *boxMon, s32 field, const void *dataArg)
         SET8(substruct3->otGender);
         break;
     case MON_DATA_HP_IV:
-        SET8(substruct3->hpIV);
-        break;
     case MON_DATA_ATK_IV:
-        SET8(substruct3->attackIV);
-        break;
     case MON_DATA_DEF_IV:
-        SET8(substruct3->defenseIV);
-        break;
     case MON_DATA_SPEED_IV:
-        SET8(substruct3->speedIV);
-        break;
     case MON_DATA_SPATK_IV:
-        SET8(substruct3->spAttackIV);
-        break;
     case MON_DATA_SPDEF_IV:
-        SET8(substruct3->spDefenseIV);
+    {
+        // Rewrites that stat's loci to give the IV (nearest of the 11 genetic values).
+        struct Genome genome;
+        ReadBoxMonGenome(boxMon, substruct0, substruct3, &genome);
+        GenomeFromIVs(&genome, field - MON_DATA_HP_IV, *data & MAX_IV_MASK, boxMon->personality);
+        WriteBoxMonGenome(boxMon, substruct0, substruct3, &genome);
         break;
+    }
     case MON_DATA_IS_EGG:
         SET8(substruct3->isEgg);
         if (substruct3->isEgg)
@@ -4369,41 +4471,27 @@ void SetBoxMonData(struct BoxPokemon *boxMon, s32 field, const void *dataArg)
         SET8(substruct3->effortRibbon);
         break;
     case MON_DATA_MARINE_RIBBON:
-        SET8(substruct3->marineRibbon);
-        break;
     case MON_DATA_LAND_RIBBON:
-        SET8(substruct3->landRibbon);
-        break;
     case MON_DATA_SKY_RIBBON:
-        SET8(substruct3->skyRibbon);
-        break;
     case MON_DATA_COUNTRY_RIBBON:
-        SET8(substruct3->countryRibbon);
-        break;
     case MON_DATA_NATIONAL_RIBBON:
-        SET8(substruct3->nationalRibbon);
-        break;
     case MON_DATA_EARTH_RIBBON:
-        SET8(substruct3->earthRibbon);
-        break;
     case MON_DATA_WORLD_RIBBON:
-        SET8(substruct3->worldRibbon);
-        break;
     case MON_DATA_UNUSED_RIBBONS:
-        SET8(substruct3->unusedRibbons);
-        break;
+        break; // these bits hold the genome
     case MON_DATA_MODERN_FATEFUL_ENCOUNTER:
         SET8(substruct3->modernFatefulEncounter);
         break;
     case MON_DATA_IVS:
     {
         u32 ivs = data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24);
-        substruct3->hpIV = ivs & MAX_IV_MASK;
-        substruct3->attackIV = (ivs >> 5) & MAX_IV_MASK;
-        substruct3->defenseIV = (ivs >> 10) & MAX_IV_MASK;
-        substruct3->speedIV = (ivs >> 15) & MAX_IV_MASK;
-        substruct3->spAttackIV = (ivs >> 20) & MAX_IV_MASK;
-        substruct3->spDefenseIV = (ivs >> 25) & MAX_IV_MASK;
+        struct Genome genome;
+        u32 stat;
+
+        ReadBoxMonGenome(boxMon, substruct0, substruct3, &genome);
+        for (stat = 0; stat < NUM_STATS; stat++)
+            GenomeFromIVs(&genome, stat, (ivs >> (stat * 5)) & MAX_IV_MASK, boxMon->personality);
+        WriteBoxMonGenome(boxMon, substruct0, substruct3, &genome);
         break;
     }
     default:
