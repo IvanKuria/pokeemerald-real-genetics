@@ -19,6 +19,8 @@
 #include "party_menu.h"
 #include "list_menu.h"
 #include "overworld.h"
+#include "genetics.h"
+#include "tv.h"
 #include "constants/items.h"
 #include "constants/moves.h"
 #include "constants/region_map_sections.h"
@@ -26,7 +28,7 @@
 extern const struct Evolution gEvolutionTable[][EVOS_PER_MON];
 
 static void ClearDaycareMonMail(struct DaycareMail *mail);
-static void SetInitialEggData(struct Pokemon *mon, u16 species, struct DayCare *daycare);
+static void SetInitialEggData(struct Pokemon *mon, u16 species, u32 personality);
 static u8 GetDaycareCompatibilityScore(struct DayCare *daycare);
 static void DaycarePrintMonInfo(u8 windowId, u32 daycareSlotId, u8 y);
 
@@ -411,6 +413,19 @@ static u16 GetEggSpecies(u16 species)
     return species;
 }
 
+// Real genetics species barrier: two Pokémon can only breed if they come from the same evolution family.
+// Nidoran and Volbeat/Illumise are one species split by sex (vanilla breeds either from the mother), so each
+// pair counts as one family.
+static u16 GetBreedingFamily(u16 species)
+{
+    species = GetEggSpecies(species);
+    if (species == SPECIES_NIDORAN_M)
+        species = SPECIES_NIDORAN_F;
+    else if (species == SPECIES_VOLBEAT)
+        species = SPECIES_ILLUMISE;
+    return species;
+}
+
 static s32 GetParentToInheritNature(struct DayCare *daycare)
 {
     u32 species[DAYCARE_MON_COUNT];
@@ -501,99 +516,6 @@ void TriggerPendingDaycareEgg(void)
 static void UNUSED TriggerPendingDaycareMaleEgg(void)
 {
     _TriggerPendingDaycareMaleEgg(&gSaveBlock1Ptr->daycare);
-}
-
-// Removes the selected index from the given IV list and shifts the remaining
-// elements to the left.
-static void RemoveIVIndexFromList(u8 *ivs, u8 selectedIv)
-{
-    s32 i, j;
-    u8 temp[NUM_STATS];
-
-    ivs[selectedIv] = 0xFF;
-    for (i = 0; i < NUM_STATS; i++)
-    {
-        temp[i] = ivs[i];
-    }
-
-    j = 0;
-    for (i = 0; i < NUM_STATS; i++)
-    {
-        if (temp[i] != 0xFF)
-            ivs[j++] = temp[i];
-    }
-}
-
-static void InheritIVs(struct Pokemon *egg, struct DayCare *daycare)
-{
-    u8 i;
-    u8 selectedIvs[INHERITED_IV_COUNT];
-    u8 availableIVs[NUM_STATS];
-    u8 whichParents[INHERITED_IV_COUNT];
-    u8 iv;
-
-    // Initialize a list of IV indices.
-    for (i = 0; i < NUM_STATS; i++)
-    {
-        availableIVs[i] = i;
-    }
-
-    // Select the 3 IVs that will be inherited.
-    for (i = 0; i < INHERITED_IV_COUNT; i++)
-    {
-        // Randomly pick an IV from the available list and stop from being chosen again.
-        // BUG: Instead of removing the IV that was just picked, this
-        // removes position 0 (HP) then position 1 (DEF), then position 2. This is why HP and DEF
-        // have a lower chance to be inherited in Emerald and why the IV picked for inheritance can
-        // be repeated. Amusingly, FRLG and RS also got this wrong. They remove selectedIvs[i], which
-        // is not an index! This means that it can sometimes remove the wrong stat.
-        #ifndef BUGFIX
-        selectedIvs[i] = availableIVs[Random() % (NUM_STATS - i)];
-        RemoveIVIndexFromList(availableIVs, i);
-        #else
-        u8 index = Random() % (NUM_STATS - i);
-        selectedIvs[i] = availableIVs[index];
-        RemoveIVIndexFromList(availableIVs, index);
-        #endif
-    }
-
-    // Determine which parent each of the selected IVs should inherit from.
-    for (i = 0; i < INHERITED_IV_COUNT; i++)
-    {
-        whichParents[i] = Random() % DAYCARE_MON_COUNT;
-    }
-
-    // Set each of inherited IVs on the egg mon.
-    for (i = 0; i < INHERITED_IV_COUNT; i++)
-    {
-        switch (selectedIvs[i])
-        {
-            case 0:
-                iv = GetBoxMonData(&daycare->mons[whichParents[i]].mon, MON_DATA_HP_IV);
-                SetMonData(egg, MON_DATA_HP_IV, &iv);
-                break;
-            case 1:
-                iv = GetBoxMonData(&daycare->mons[whichParents[i]].mon, MON_DATA_ATK_IV);
-                SetMonData(egg, MON_DATA_ATK_IV, &iv);
-                break;
-            case 2:
-                iv = GetBoxMonData(&daycare->mons[whichParents[i]].mon, MON_DATA_DEF_IV);
-                SetMonData(egg, MON_DATA_DEF_IV, &iv);
-                break;
-            case 3:
-                iv = GetBoxMonData(&daycare->mons[whichParents[i]].mon, MON_DATA_SPEED_IV);
-                SetMonData(egg, MON_DATA_SPEED_IV, &iv);
-                break;
-            case 4:
-                iv = GetBoxMonData(&daycare->mons[whichParents[i]].mon, MON_DATA_SPATK_IV);
-                SetMonData(egg, MON_DATA_SPATK_IV, &iv);
-                break;
-            case 5:
-                iv = GetBoxMonData(&daycare->mons[whichParents[i]].mon, MON_DATA_SPDEF_IV);
-                SetMonData(egg, MON_DATA_SPDEF_IV, &iv);
-                break;
-        }
-    }
 }
 
 // Counts the number of egg moves a Pokémon learns and stores the moves in
@@ -764,10 +686,13 @@ static u16 DetermineEggSpeciesAndParentSlots(struct DayCare *daycare, u8 *parent
     u16 i;
     u16 species[DAYCARE_MON_COUNT];
     u16 eggSpecies;
+    bool8 isClone = FALSE;
 
     for (i = 0; i < DAYCARE_MON_COUNT; i++)
     {
         species[i] = GetBoxMonData(&daycare->mons[i].mon, MON_DATA_SPECIES);
+        if (species[i] == SPECIES_DITTO)
+            isClone = TRUE;
         if (species[i] == SPECIES_DITTO)
         {
             parentSlots[0] = i ^ 1;
@@ -781,11 +706,12 @@ static u16 DetermineEggSpeciesAndParentSlots(struct DayCare *daycare, u8 *parent
     }
 
     eggSpecies = GetEggSpecies(species[parentSlots[0]]);
-    if (eggSpecies == SPECIES_NIDORAN_F && daycare->offspringPersonality & EGG_GENDER_MALE)
+    // A Ditto egg is a clone of the other parent, so it never switches to the other sex's species.
+    if (!isClone && eggSpecies == SPECIES_NIDORAN_F && daycare->offspringPersonality & EGG_GENDER_MALE)
     {
         eggSpecies = SPECIES_NIDORAN_M;
     }
-    if (eggSpecies == SPECIES_ILLUMISE && daycare->offspringPersonality & EGG_GENDER_MALE)
+    if (!isClone && eggSpecies == SPECIES_ILLUMISE && daycare->offspringPersonality & EGG_GENDER_MALE)
     {
         eggSpecies = SPECIES_VOLBEAT;
     }
@@ -801,17 +727,88 @@ static u16 DetermineEggSpeciesAndParentSlots(struct DayCare *daycare, u8 *parent
     return eggSpecies;
 }
 
+// Returns the daycare slot of the non-Ditto parent when the other parent is Ditto, or -1 if there is no Ditto.
+static s32 GetClonedParentSlot(struct DayCare *daycare)
+{
+    s32 i;
+
+    for (i = 0; i < DAYCARE_MON_COUNT; i++)
+    {
+        if (GetBoxMonData(&daycare->mons[i].mon, MON_DATA_SPECIES) == SPECIES_DITTO)
+            return i ^ 1;
+    }
+    return -1;
+}
+
+// A Ditto egg is a full copy of the other parent, so it gets that parent's gender byte (gender and ability bit).
+// If the egg species has a different gender ratio (Azurill vs. Marill) and that byte would flip the gender, the
+// byte nearest the ratio boundary with the same ability bit is used instead, which keeps the parent's gender in
+// both forms. The nature already picked for the egg (Everstone) is kept by adjusting the second byte.
+static u32 SetCloneGenderByte(u32 personality, u16 eggSpecies, struct BoxPokemon *parent)
+{
+    u8 wantedNature = GetNatureFromPersonality(personality);
+    u8 gender = GetBoxMonGender(parent);
+    u8 genderRatio = gSpeciesInfo[eggSpecies].genderRatio;
+    u32 genderByte = GetBoxMonData(parent, MON_DATA_PERSONALITY) & 0xFF;
+    u32 candidate;
+    u32 i;
+
+    if (gender != MON_GENDERLESS
+     && genderRatio != MON_MALE && genderRatio != MON_FEMALE && genderRatio != MON_GENDERLESS
+     && GetGenderFromSpeciesAndPersonality(eggSpecies, genderByte) != gender)
+    {
+        if (gender == MON_FEMALE)
+            genderByte = (genderRatio - 1) - (((genderRatio - 1) ^ genderByte) & 1);
+        else
+            genderByte = genderRatio + ((genderRatio ^ genderByte) & 1);
+    }
+
+    personality = (personality & ~0xFF) | genderByte;
+
+    // Nature is personality % 25. Stepping the second byte moves that by 256 % 25 = 6, which reaches every nature.
+    for (i = 0; i < 256; i++)
+    {
+        candidate = (personality & ~0xFF00) | ((((personality >> 8) + i) & 0xFF) << 8);
+        if (GetNatureFromPersonality(candidate) == wantedNature)
+            return candidate;
+    }
+    return personality;
+}
+
 static void _GiveEggFromDaycare(struct DayCare *daycare)
 {
     struct Pokemon egg;
+    struct Genome mother, father, child;
     u16 species;
     u8 parentSlots[DAYCARE_MON_COUNT];
     bool8 isEgg;
+    s32 clonedSlot;
+    u32 personality;
 
     species = DetermineEggSpeciesAndParentSlots(daycare, parentSlots);
     AlterEggSpeciesWithIncenseItem(&species, daycare);
-    SetInitialEggData(&egg, species, daycare);
-    InheritIVs(&egg, daycare);
+
+    // Real genetics: the egg's genes come from its parents. Vanilla IV inheritance is gone; IVs are read off the genes.
+    personality = daycare->offspringPersonality;
+    clonedSlot = GetClonedParentSlot(daycare);
+    if (clonedSlot >= 0)
+    {
+        GetBoxMonGenome(&daycare->mons[clonedSlot].mon, &mother);
+        CloneGenome(&child, &mother);
+        personality = SetCloneGenderByte(personality, species, &daycare->mons[clonedSlot].mon);
+    }
+    else
+    {
+        // parentSlots[0] is the female parent
+        GetBoxMonGenome(&daycare->mons[parentSlots[0]].mon, &mother);
+        GetBoxMonGenome(&daycare->mons[parentSlots[1]].mon, &father);
+        InheritGenome(&child, &mother, &father);
+    }
+    personality = SolvePersonalityForShiny(personality, GetPlayerIDAsU32(), GenomeIsShiny(&child));
+
+    SetInitialEggData(&egg, species, personality);
+    SetBoxMonGenome(&egg.box, &child);
+    CalculateMonStats(&egg);
     BuildEggMoveset(&egg, &daycare->mons[parentSlots[1]].mon, &daycare->mons[parentSlots[0]].mon);
 
     if (species == SPECIES_PICHU)
@@ -852,14 +849,12 @@ void CreateEgg(struct Pokemon *mon, u16 species, bool8 setHotSpringsLocation)
     SetMonData(mon, MON_DATA_IS_EGG, &isEgg);
 }
 
-static void SetInitialEggData(struct Pokemon *mon, u16 species, struct DayCare *daycare)
+static void SetInitialEggData(struct Pokemon *mon, u16 species, u32 personality)
 {
-    u32 personality;
     u16 ball;
     u8 metLevel;
     u8 language;
 
-    personality = daycare->offspringPersonality;
     CreateMon(mon, species, EGG_HATCH_LEVEL, USE_RANDOM_IVS, TRUE, personality, OT_ID_PLAYER_ID, 0);
     metLevel = 0;
     ball = ITEM_POKE_BALL;
@@ -1055,6 +1050,8 @@ static u8 GetDaycareCompatibilityScore(struct DayCare *daycare)
         if (genders[0] == MON_GENDERLESS || genders[1] == MON_GENDERLESS)
             return PARENTS_INCOMPATIBLE;
         if (!EggGroupsOverlap(eggGroups[0], eggGroups[1]))
+            return PARENTS_INCOMPATIBLE;
+        if (GetBreedingFamily(species[0]) != GetBreedingFamily(species[1]))
             return PARENTS_INCOMPATIBLE;
 
         if (species[0] == species[1])
