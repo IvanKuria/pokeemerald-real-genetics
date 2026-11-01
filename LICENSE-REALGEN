@@ -6,7 +6,7 @@ This license covers only the files written for Pokémon Emerald: Real Genetics, 
   test/realgen/
   tools/realgen/
   REALGEN_SPEC.md, README.md, CONTRIBUTING.md, LICENSE-REALGEN
-  .github/ISSUE_TEMPLATE/, .github/workflows/release.yml
+  .github/ISSUE_TEMPLATE/, .github/workflows/, .github/dependabot.yml
 
 It does not cover the pokeemerald decompilation by pret and its contributors, changes made to
 their files, or any Pokémon assets, all of which belong to their respective owners.

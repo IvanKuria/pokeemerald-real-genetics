@@ -9,20 +9,26 @@ on:
     branches: [ master, main ]
   pull_request:
 
+# Every action is pinned to a full commit SHA. Dependabot (.github/dependabot.yml) bumps the pins.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0   # make_patch.sh needs the history to find the upstream base commit
+          persist-credentials: false
 
       - name: Checkout agbcc
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: agbcc
           repository: pret/agbcc
+          persist-credentials: false
 
       - name: Install binutils
         run: |
@@ -49,7 +55,7 @@ jobs:
         run: REALGEN_MAKE="make -j$(nproc)" tools/realgen/make_patch.sh
 
       - name: Upload the patch
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: real-genetics-patch
           path: dist/*.bps
