@@ -8,6 +8,8 @@ It's built on [pret/pokeemerald](https://github.com/pret/pokeemerald), the decom
 
 **[Download the latest patch](../../releases/latest)**
 
+> **Heads up, this is a beta.** I'm still testing everything in game, so please back up your save before you play, and if anything breaks, [open an issue](../../issues/new/choose) and tell me what happened.
+
 ## Contents
 
 - [Why I made this](#why-i-made-this)
