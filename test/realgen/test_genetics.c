@@ -112,7 +112,7 @@ static void TestPhenotypeTables(void)
     }
     CHECK(bad == 0, "shiny only for s/s (%d mismatches)", bad);
     {
-        static const u8 slots[][3] = { {0, 0, 0}, {5, 0, 0}, {0, 5, 0}, {3, 9, 0}, {7, 7, 1}, {15, 15, 1}, {1, 15, 0} };
+        static const u8 slots[][3] = { {0, 0, 0}, {5, 0, 0}, {0, 5, 0}, {3, 9, 0}, {7, 7, 1}, {127, 127, 1}, {1, 127, 0} };
         bad = 0;
         for (i = 0; i < (int)ARRAY_COUNT(slots); i++)
         {
@@ -122,7 +122,7 @@ static void TestPhenotypeTables(void)
             if (!GenomeIsLethal(&g) != !slots[i][2])
                 bad++;
         }
-        CHECK(bad == 0, "lethal only when both slots hold the same non-zero id (%d mismatches)", bad);
+        CHECK(bad == 0, "lethal only when lethal[1] == lethal[0] != 0 (%d mismatches)", bad);
     }
 }
 
@@ -134,7 +134,7 @@ static void TestWild(void)
     long n, homo[NUM_COAT_LOCI] = {0}, het[NUM_COAT_LOCI] = {0}, alleles[NUM_COAT_LOCI] = {0}, phen[4] = {0};
     long shinyHomo = 0, shinyHet = 0, shinyAlleles = 0, shinyPheno = 0;
     long ivHist[32] = {0}, ivBadValue = 0, ivPlus = 0, ivCopies = 0, ivRaw = 0;
-    long lethalSlots[3] = {0}, lethalBadId = 0, lethalDup = 0, lethalDead = 0;
+    long lethalCarriers = 0, lethalBadId = 0, lethalSecond = 0, lethalDead = 0, lethalById[GENOME_LETHAL_LOCI + 1] = {0};
     double q = 1.0 / sqrt(20000.0), qs = 1.0 / sqrt(8192.0);
     int l, s, i;
 
@@ -143,7 +143,6 @@ static void TestWild(void)
     for (n = 0; n < N; n++)
     {
         struct Genome g;
-        int carried = 0;
         Wild(&g);
         for (l = 0; l < NUM_COAT_LOCI; l++)
         {
@@ -169,14 +168,10 @@ static void TestWild(void)
                 ivCopies += 2;
             }
         }
-        for (i = 0; i < GENOME_LETHAL_SLOTS; i++)
-        {
-            if (g.lethal[i] != 0) carried++;
-            if (g.lethal[i] > GENOME_LETHAL_LOCI) lethalBadId++;
-        }
-        if (g.lethal[0] != 0 && g.lethal[0] == g.lethal[1]) lethalDup++;
+        if (g.lethal[0] > GENOME_LETHAL_LOCI) lethalBadId++;
+        else if (g.lethal[0] != 0) { lethalCarriers++; lethalById[g.lethal[0]]++; }
+        if (g.lethal[1] != 0) lethalSecond++;
         if (GenomeIsLethal(&g)) lethalDead++;
-        lethalSlots[carried]++;
     }
     for (i = 0; i < 32; i++)
     {
@@ -230,14 +225,20 @@ static void TestWild(void)
     }
 
     {
-        // Poisson(0.58) loci at random among 15, at most 2 stored: E[min(K,2)] = 0.5555 before same-locus collisions
-        double mean = (lethalSlots[1] + 2.0 * lethalSlots[2]) / N;
-        CHECK(lethalBadId == 0 && lethalDup == 0 && lethalDead == 0,
-              "wild lethal slots: ids in 1..15, never the same id twice, no wild Pokemon is lethal (%ld bad ids, %ld duplicates, %ld lethal)",
-              lethalBadId, lethalDup, lethalDead);
-        CHECK(InRange(mean, 0.50, 0.58), "wild carried lethal copies per Pokemon %.4f (Poisson(0.58) capped at 2 slots: about 0.55)", mean);
-        INFO("wild lethal load: 0 slots %.2f%%, 1 slot %.2f%%, 2 slots %.2f%% (Poisson(0.58): 56.0 / 32.5 / 11.5 before the cap)",
-             100.0 * lethalSlots[0] / N, 100.0 * lethalSlots[1] / N, 100.0 * lethalSlots[2] / N);
+        // spec: Poisson(0.58) copies, at most ONE kept, so P(carrier) = 1 - e^-0.58 = 0.4401, at a uniform locus 1..127
+        double frac = (double)lethalCarriers / N, expect = 1.0 - exp(-0.58), perLocus = (double)lethalCarriers / GENOME_LETHAL_LOCI;
+        long lo = LONG_MAX, hi = 0;
+        for (i = 1; i <= GENOME_LETHAL_LOCI; i++)
+        {
+            if (lethalById[i] < lo) lo = lethalById[i];
+            if (lethalById[i] > hi) hi = lethalById[i];
+        }
+        CHECK(lethalBadId == 0 && lethalSecond == 0 && lethalDead == 0,
+              "wild lethal: id in 1..%d, lethal[1] always 0, no wild Pokemon is lethal (%ld bad ids, %ld with lethal[1], %ld lethal)",
+              GENOME_LETHAL_LOCI, lethalBadId, lethalSecond, lethalDead);
+        CHECK(InRange(frac, expect - 0.002, expect + 0.002), "wild lethal carriers %.4f (1 - e^-0.58 = %.4f)", frac, expect);
+        CHECK(lo > 0.95 * perLocus && hi < 1.05 * perLocus, "lethal locus uniform over 1..%d: per-locus count %ld..%ld (mean %.0f)",
+              GENOME_LETHAL_LOCI, lo, hi, perLocus);
     }
 }
 
@@ -303,9 +304,9 @@ static void TestMendel(void)
 
 static void TestLethalMechanics(void)
 {
-    const long N = 200000;
+    const long N = 400000;
     struct Genome m, f, k;
-    long n, dead = 0, carrier = 0, bad = 0, sum3 = 0, sum9 = 0, overflowBad = 0, overflowDead = 0, overflowN[3] = {0};
+    long n, dead = 0, carrier = 0, bad = 0, sum3 = 0, sum9 = 0, none = 0, bad2 = 0;
 
     SECTION("lethal inheritance mechanics (seed 3)");
     HostSeedRng(3);
@@ -317,48 +318,31 @@ static void TestLethalMechanics(void)
     {
         Inherit(&k, &m, &f);
         if (GenomeIsLethal(&k)) { dead++; if (k.lethal[0] != 5 || k.lethal[1] != 5) bad++; }
-        else if (k.lethal[0] == 5 || k.lethal[1] == 5) carrier++;
+        else if (k.lethal[0] == 5 && k.lethal[1] == 0) carrier++;
         else if (k.lethal[0] || k.lethal[1]) bad++;
     }
-    CHECK(InRange((double)dead / N, 0.24, 0.26) && InRange((double)carrier / N, 0.49, 0.51) && bad == 0,
+    CHECK(InRange((double)dead / N, 0.245, 0.255) && InRange((double)carrier / N, 0.495, 0.505) && bad == 0,
           "carrier x carrier at the same locus: %.2f%% dead (25), %.2f%% carriers (50), %ld malformed", 100.0 * dead / N,
           100.0 * carrier / N, bad);
 
+    // different loci: each passes with p = .5; if both arrive, one is kept at random. P(carry 3) = P(carry 9) = 3/8
     memset(&m, 0, sizeof(m));
     memset(&f, 0, sizeof(f));
     m.lethal[0] = 3;
-    f.lethal[1] = 9;
-    dead = bad = 0;
+    f.lethal[0] = 9;
+    dead = 0;
     for (n = 0; n < N; n++)
     {
         Inherit(&k, &m, &f);
         dead += GenomeIsLethal(&k) ? 1 : 0;
-        sum3 += (k.lethal[0] == 3 || k.lethal[1] == 3);
-        sum9 += (k.lethal[0] == 9 || k.lethal[1] == 9);
+        sum3 += (k.lethal[0] == 3);
+        sum9 += (k.lethal[0] == 9);
+        none += (k.lethal[0] == 0);
+        if (k.lethal[1] != 0 || (k.lethal[0] && k.lethal[0] != 3 && k.lethal[0] != 9)) bad2++;
     }
-    CHECK(dead == 0 && InRange((double)sum3 / N, 0.49, 0.51) && InRange((double)sum9 / N, 0.49, 0.51),
-          "different loci: never dead (%ld), each passed 50/50 (%.3f, %.3f)", dead, (double)sum3 / N, (double)sum9 / N);
-
-    memset(&m, 0, sizeof(m));
-    memset(&f, 0, sizeof(f));
-    m.lethal[0] = 3; m.lethal[1] = 4;
-    f.lethal[0] = 5; f.lethal[1] = 6;
-    for (n = 0; n < N; n++)
-    {
-        int c = 0, i;
-        Inherit(&k, &m, &f);
-        overflowDead += GenomeIsLethal(&k) ? 1 : 0;
-        for (i = 0; i < GENOME_LETHAL_SLOTS; i++)
-        {
-            if (k.lethal[i]) c++;
-            if (k.lethal[i] && (k.lethal[i] < 3 || k.lethal[i] > 6)) overflowBad++;
-        }
-        overflowN[c]++;
-    }
-    CHECK(overflowDead == 0 && overflowBad == 0, "4 distinct parental loci: child keeps at most 2 real ones, never dead (%ld dead, %ld foreign ids)",
-          overflowDead, overflowBad);
-    INFO("4 distinct parental loci: child slots used 0/1/2 = %.2f / %.2f / %.2f %% (binomial(4,1/2) capped: 6.25 / 25 / 68.75)",
-         100.0 * overflowN[0] / N, 100.0 * overflowN[1] / N, 100.0 * overflowN[2] / N);
+    CHECK(dead == 0 && bad2 == 0, "different loci: never dead, child keeps one id, lethal[1] stays 0 (%ld dead, %ld malformed)", dead, bad2);
+    CHECK(InRange((double)sum3 / N, 0.37, 0.38) && InRange((double)sum9 / N, 0.37, 0.38) && InRange((double)none / N, 0.245, 0.255),
+          "different loci: carries 3 %.4f, carries 9 %.4f, none %.4f (3/8, 3/8, 1/4)", (double)sum3 / N, (double)sum9 / N, (double)none / N);
 }
 
 // ---------------------------------------------------------------------------------------------- the video's numbers
@@ -493,13 +477,25 @@ static void TestLethalRates(void)
         Inherit(&egg, &a, &b);
         deadSib += GenomeIsLethal(&egg) ? 1 : 0;
     }
-    INFO("random wild pair: %.3f%% of eggs die = 1 in %.0f (2,000-locus sim: 0.006%%)", 100.0 * deadWild / N,
+    INFO("random wild pair: %.3f%% of eggs die = 1 in %.0f (2,000-locus sim: 0.006%%, old 15-locus model: 1 in 194)", 100.0 * deadWild / N,
          deadWild ? (double)N / deadWild : 0.0);
     INFO("full siblings:    %.3f%% of eggs die = 1 in %.1f (2,000-locus sim: 7.14%% = 1 in 14)", 100.0 * deadSib / N,
          deadSib ? (double)N / deadSib : 0.0);
-    // only the direction is asserted; the size of the gap belongs to the 15-locus design and is reported above
-    CHECK(deadSib > 2 * deadWild && deadSib > 0, "sibling crosses die more often than random wild crosses (%ld vs %ld)", deadSib, deadWild);
-    CHECK(deadWild < N / 50, "random wild crosses rarely die (under 2%%): %.3f%%", 100.0 * deadWild / N);
+    {
+        // one-allele model, a = P(carrier) = 1 - e^-0.58, L = 127 loci:
+        //   random pair: a^2 / L same locus, then both pass (1/4)
+        //   siblings: a kid carries a parent's id with 1/2 (other parent not a carrier) or 3/8 (both carriers);
+        //   dead = 1/4 * P(both kids carry the same id) = 1/4 * (a^2 * 2 * (3/8)^2 + 2a(1-a) * (1/2)^2)
+        double a = 1.0 - exp(-0.58), L = GENOME_LETHAL_LOCI;
+        double wantWild = a * a / L / 4.0;
+        double wantSib = (a * a * 2.0 * 0.140625 + 2.0 * a * (1.0 - a) * 0.25) / 4.0;
+        INFO("expected: random pair 1 in %.0f, siblings 1 in %.1f", 1.0 / wantWild, 1.0 / wantSib);
+        CHECK(InRange((double)deadWild / N, 0.85 * wantWild, 1.15 * wantWild), "random wild pair death %.4f%% within 15%% of %.4f%%",
+              100.0 * deadWild / N, 100.0 * wantWild);
+        CHECK(InRange((double)deadSib / N, 0.97 * wantSib, 1.03 * wantSib), "sibling death %.3f%% within 3%% of %.3f%%",
+              100.0 * deadSib / N, 100.0 * wantSib);
+        CHECK(deadSib > 50 * deadWild, "siblings die far more often than random pairs (%.0fx)", deadWild ? (double)deadSib / deadWild : 0.0);
+    }
 }
 
 // ---------------------------------------------------------------------------------------------- Ditto, setters, personality
