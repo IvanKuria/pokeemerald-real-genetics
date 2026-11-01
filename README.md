@@ -1,14 +1,32 @@
-# Pokémon Emerald: Real Genetics
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=EN6cjSL-OmY"><img src="docs/images/thumbnail.jpg" alt="I Gave Pokémon Real Genetics" width="720"></a>
+</p>
+
+<h1 align="center">Pokémon Emerald: Real Genetics</h1>
+
+<p align="center">Pokémon Emerald, but breeding follows real genetics.</p>
+
+<p align="center">
+  <a href="https://github.com/IvanKuria/pokeemerald-real-genetics/releases/latest"><img src="https://img.shields.io/github/v/release/IvanKuria/pokeemerald-real-genetics?include_prereleases&label=latest%20patch&color=2ea043" alt="Latest patch"></a>
+  <a href="https://github.com/IvanKuria/pokeemerald-real-genetics/releases"><img src="https://img.shields.io/github/downloads/IvanKuria/pokeemerald-real-genetics/total?color=1f6feb" alt="Downloads"></a>
+  <a href="https://www.youtube.com/watch?v=EN6cjSL-OmY"><img src="https://img.shields.io/badge/watch%20the%20video-YouTube-red?logo=youtube" alt="Watch the video"></a>
+</p>
+
+<p align="center">
+  <b><a href="https://github.com/IvanKuria/pokeemerald-real-genetics/releases/latest">Download the patch</a></b> &nbsp;·&nbsp;
+  <a href="#how-to-play">How to play</a> &nbsp;·&nbsp;
+  <a href="#the-rules">The rules</a> &nbsp;·&nbsp;
+  <a href="#faq">FAQ</a>
+</p>
+
+> [!WARNING]
+> **This is a beta.** I'm still testing everything in game, so please back up your save before you play, and if anything breaks, [open an issue](../../issues/new/choose) and tell me what happened.
 
 So, this is the playable version of the mod from my video **[I Gave Pokémon Real Genetics](https://www.youtube.com/watch?v=EN6cjSL-OmY)**. A lot of you guys asked if you could actually play it, so here it is.
 
 It's Pokémon Emerald, but breeding follows real genetics. Two normal brown Eevees can have an albino baby, shiny is a gene you can breed for, IVs come from genes, some eggs never hatch, and Ditto makes clones. The rest of the game is just normal Emerald.
 
 It's built on [pret/pokeemerald](https://github.com/pret/pokeemerald), the decompilation of Emerald. You get it as a `.bps` patch that you put on your own copy of the game. I don't give out ROMs, and there are no ROMs in this repo.
-
-**[Download the latest patch](../../releases/latest)**
-
-> **Heads up, this is a beta.** I'm still testing everything in game, so please back up your save before you play, and if anything breaks, [open an issue](../../issues/new/choose) and tell me what happened.
 
 ## Contents
 
@@ -79,6 +97,11 @@ There are three hidden colour genes, all recessive, so a Pokémon only shows the
 - **Albino** (based on the real TYR gene). White, and it wins over everything else.
 - **Red** (based on MC1R, the gene behind red hair in people). Wins over black.
 - **Black** (based on ASIP, the gene that makes black cats black).
+
+<p align="center">
+  <img src="docs/images/coats.png" alt="24 Pokémon shown normal, albino, red and black" width="900">
+  <br><sub>Real Emerald sprites through the mod's colour genes: normal, albino, red and black.</sub>
+</p>
 
 Each colour shows up in about 1 in 20,000 wild Pokémon, which is about how rare albinism is in people. But the gene itself is way more common than that: about 1 in 71 wild Pokémon is secretly carrying it. If you breed two carriers together, about 1 in 4 of the babies gets two copies and comes out that colour, even though both parents look completely normal.
 
