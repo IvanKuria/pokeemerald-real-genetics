@@ -19,12 +19,16 @@
   <a href="#faq">FAQ</a>
 </p>
 
-> [!WARNING]
-> **This is a beta.** I'm still testing everything in game, so please back up your save before you play, and if anything breaks, [open an issue](../../issues/new/choose) and tell me what happened.
-
 So, this is the playable version of the mod from my video **[I Gave Pokémon Real Genetics](https://www.youtube.com/watch?v=EN6cjSL-OmY)**. A lot of you guys asked if you could actually play it, so here it is.
 
 It's Pokémon Emerald, but breeding follows real genetics. Two normal brown Eevees can have an albino baby, shiny is a gene you can breed for, IVs come from genes, some eggs never hatch, and Ditto makes clones. The rest of the game is just normal Emerald.
+
+<p align="center">
+  <img src="docs/images/battle.png" alt="An albino Pikachu battling a red Pikachu" width="32%">
+  <img src="docs/images/hatch.png" alt="An albino Pichu hatching" width="32%">
+  <img src="docs/images/lethal.png" alt="An egg that didn't hatch" width="32%">
+  <br><sub>Straight from the game: an albino Pikachu vs a red one, an albino Pichu hatching, and an egg with two broken genes.</sub>
+</p>
 
 It's built on [pret/pokeemerald](https://github.com/pret/pokeemerald), the decompilation of Emerald. You get it as a `.bps` patch that you put on your own copy of the game. I don't give out ROMs, and there are no ROMs in this repo.
 
@@ -145,7 +149,7 @@ Egg timing, the Day Care itself, natures (including the Everstone), gender, abil
 - **Trading with an unmodded game sends weird IVs.** The bits where normal Emerald keeps IVs are used for genes here, so a Pokémon you trade to a normal game (or to Ruby, Sapphire, FireRed, LeafGreen, Colosseum or XD) shows up over there with IVs that look random. Going the other way is fine: a Pokémon from a normal game gets genes made up from its IVs, with normal colouring and no broken genes.
 - **Party and PC icons stay the normal colour.** The coloured version shows in battle, on the summary screen, when an egg hatches, when evolving or trading, in contests and in the PC's big preview, but the little menu icons and the Pokédex entries use the normal palette. Also, albino eyes go pale instead of red, because the game doesn't know which pixels are eyes.
 - **Fixed IVs get rounded.** Anything in the game that sets IVs directly (like trainer Pokémon) gets rounded to the nearest of the 11 possible values.
-- **I haven't tested it on a real GBA or a flash cart.** It should work like any other patch, but I've only played it in emulators.
+- **I haven't tested it on a real GBA or a flash cart.** It should work like any other patch, but I've only tested it in emulators. Still, back up your save before you start, just in case.
 
 ## FAQ
 
