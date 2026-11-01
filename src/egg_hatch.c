@@ -35,6 +35,9 @@
 #include "field_screen_effect.h"
 #include "trade.h"
 #include "data.h"
+#include "genetics.h"
+#include "tv.h"
+#include "constants/game_stat.h"
 #include "battle.h" // to get rid of later
 #include "constants/rgb.h"
 
@@ -315,7 +318,8 @@ static void CreateHatchedMon(struct Pokemon *egg, struct Pokemon *temp)
     u32 personality, pokerus;
     u8 i, friendship, language, gameMet, markings, isModernFatefulEncounter;
     u16 moves[MAX_MON_MOVES];
-    u32 ivs[NUM_STATS];
+    struct Genome genome;
+    u32 otId;
 
     species = GetMonData(egg, MON_DATA_SPECIES);
 
@@ -324,8 +328,12 @@ static void CreateHatchedMon(struct Pokemon *egg, struct Pokemon *temp)
 
     personality = GetMonData(egg, MON_DATA_PERSONALITY);
 
-    for (i = 0; i < NUM_STATS; i++)
-        ivs[i] = GetMonData(egg, MON_DATA_HP_IV + i);
+    // Real genetics: the hatched Pokémon keeps the egg's genes (IVs, coat, shiny, lethal carriers).
+    // The hatcher becomes the OT, so if that flips vanilla's shiny check (traded egg), re-solve the personality.
+    GetBoxMonGenome(&egg->box, &genome);
+    otId = GetPlayerIDAsU32();
+    if (!IsShinyOtIdPersonality(otId, personality) != !GenomeIsShiny(&genome))
+        personality = SolvePersonalityForShiny(personality, otId, GenomeIsShiny(&genome));
 
     // The language is initially read from the Egg but is later overwritten below
     language = GetMonData(egg, MON_DATA_LANGUAGE);
@@ -339,8 +347,7 @@ static void CreateHatchedMon(struct Pokemon *egg, struct Pokemon *temp)
     for (i = 0; i < MAX_MON_MOVES; i++)
         SetMonData(temp, MON_DATA_MOVE1 + i,  &moves[i]);
 
-    for (i = 0; i < NUM_STATS; i++)
-        SetMonData(temp, MON_DATA_HP_IV + i,  &ivs[i]);
+    SetBoxMonGenome(&temp->box, &genome);
 
     language = GAME_LANGUAGE;
     SetMonData(temp, MON_DATA_LANGUAGE, &language);
@@ -395,6 +402,40 @@ static void AddHatchedMonToParty(u8 id)
 void ScriptHatchMon(void)
 {
     AddHatchedMonToParty(gSpecialVar_0x8004);
+}
+
+// Real genetics: an egg with two copies of a lethal allele never hatches. Called by EventScript_EggHatch with
+// the hatching egg's party slot in VAR_0x8004.
+bool8 IsHatchingEggLethal(void)
+{
+    struct Genome genome;
+    struct Pokemon *mon;
+
+    if (gSpecialVar_0x8004 >= PARTY_SIZE)
+        return FALSE;
+    mon = &gPlayerParty[gSpecialVar_0x8004];
+    if (!GetMonData(mon, MON_DATA_IS_EGG) || GetMonData(mon, MON_DATA_SANITY_IS_BAD_EGG))
+        return FALSE;
+
+    GetBoxMonGenome(&mon->box, &genome);
+    return GenomeIsLethal(&genome);
+}
+
+void RemoveLethalEgg(void)
+{
+    u32 hatchedEggs;
+
+    if (gSpecialVar_0x8004 >= PARTY_SIZE || !GetMonData(&gPlayerParty[gSpecialVar_0x8004], MON_DATA_IS_EGG))
+        return;
+
+    ZeroMonData(&gPlayerParty[gSpecialVar_0x8004]);
+    CompactPartySlots();
+    CalculatePlayerPartyCount();
+
+    // The step handler already counted this egg as hatched.
+    hatchedEggs = GetGameStat(GAME_STAT_HATCHED_EGGS);
+    if (hatchedEggs != 0)
+        SetGameStat(GAME_STAT_HATCHED_EGGS, hatchedEggs - 1);
 }
 
 static bool8 _CheckDaycareMonReceivedMail(struct DayCare *daycare, u8 daycareId)
