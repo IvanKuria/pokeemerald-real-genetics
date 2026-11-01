@@ -45,4 +45,11 @@ prefabs.json
 /pokeemerald-*.png
 /pokeemerald_modern-*.png
 .porydaw/
+
+# Real Genetics release output (patches only, never ROMs or saves)
+dist/
+*.bps
+*.sav
+*.srm
+__pycache__/
 build.log

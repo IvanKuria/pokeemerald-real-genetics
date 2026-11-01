@@ -1,0 +1,106 @@
+name: Release
+
+# On a version tag (v1.0.0 and so on): build vanilla and modded ROMs, make the .bps patch, verify it,
+# and publish a GitHub release with ONLY the .bps attached. No ROM ever leaves the runner.
+#
+# The build runs with a read-only token. Only the small publish job, which runs no project code,
+# gets permission to create the release.
+#
+# Every action is pinned to a full commit SHA. Dependabot (.github/dependabot.yml) bumps the pins.
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout agbcc
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: agbcc
+          repository: pret/agbcc
+          persist-credentials: false
+
+      - name: Install binutils
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi libpng-dev
+
+      - name: Install agbcc
+        run: |
+          ./build.sh
+          ./install.sh ../
+        working-directory: agbcc
+
+      - name: Fetch upstream pokeemerald
+        run: |
+          git remote add upstream https://github.com/pret/pokeemerald.git || git remote set-url upstream https://github.com/pret/pokeemerald.git
+          git fetch --no-tags upstream master
+
+      - name: Test the BPS encoder and decoder
+        run: python3 tools/realgen/test_bps.py
+
+      - name: Build vanilla and modded ROMs, make and verify the patch
+        run: REALGEN_MAKE="make -j$(nproc)" tools/realgen/make_patch.sh "$GITHUB_REF_NAME"
+
+      - name: Write release notes
+        run: |
+          {
+            echo "Patch this onto your own Pokémon Emerald (USA, Europe) ROM with [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/) or [Flips](https://github.com/Alcaro/Flips), then play it in any GBA emulator. The full steps are in the [README](https://github.com/${GITHUB_REPOSITORY}#how-to-play)."
+            echo
+            echo "No ROMs are included. The patch only works on the exact ROM below."
+            echo
+            echo '```'
+            cat "dist/pokeemerald-real-genetics-${GITHUB_REF_NAME}.txt"
+            echo '```'
+          } > release-notes.md
+          mkdir -p release
+          cp dist/*.bps release-notes.md release/
+
+      - name: Upload the patch for the publish job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: release/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # the only job allowed to create the release
+    steps:
+      - name: Download the patch
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: release
+
+      - name: Check that only the patch gets attached
+        run: |
+          ls -l release
+          if find release -type f ! -name '*.bps' ! -name 'release-notes.md' | grep -q .; then
+            echo "unexpected files in the release bundle" >&2
+            exit 1
+          fi
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          name: Real Genetics ${{ github.ref_name }}
+          body_path: release/release-notes.md
+          files: release/*.bps
+          fail_on_unmatched_files: true
