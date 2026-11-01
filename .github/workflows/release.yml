@@ -1,0 +1,68 @@
+name: Release
+
+# On a version tag (v1.0.0 and so on): build vanilla and modded ROMs, make the .bps patch, verify it,
+# and publish a GitHub release with ONLY the .bps attached. No ROM ever leaves the runner.
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout agbcc
+        uses: actions/checkout@v4
+        with:
+          path: agbcc
+          repository: pret/agbcc
+
+      - name: Install binutils
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi libpng-dev
+
+      - name: Install agbcc
+        run: |
+          ./build.sh
+          ./install.sh ../
+        working-directory: agbcc
+
+      - name: Fetch upstream pokeemerald
+        run: |
+          git remote add upstream https://github.com/pret/pokeemerald.git || git remote set-url upstream https://github.com/pret/pokeemerald.git
+          git fetch --no-tags upstream master
+
+      - name: Test the BPS encoder and decoder
+        run: python3 tools/realgen/test_bps.py
+
+      - name: Build vanilla and modded ROMs, make and verify the patch
+        run: REALGEN_MAKE="make -j$(nproc)" tools/realgen/make_patch.sh "$GITHUB_REF_NAME"
+
+      - name: Write release notes
+        run: |
+          {
+            echo "Patch this onto your own Pokémon Emerald (USA, Europe) ROM with [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/) or [Flips](https://github.com/Alcaro/Flips), then play it in any GBA emulator. The full steps are in the [README](https://github.com/${GITHUB_REPOSITORY}#how-to-play)."
+            echo
+            echo "No ROMs are included. The patch only works on the exact ROM below."
+            echo
+            echo '```'
+            cat "dist/pokeemerald-real-genetics-${GITHUB_REF_NAME}.txt"
+            echo '```'
+          } > "$RUNNER_TEMP/release-notes.md"
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Real Genetics ${{ github.ref_name }}
+          body_path: ${{ runner.temp }}/release-notes.md
+          files: dist/*.bps
+          fail_on_unmatched_files: true

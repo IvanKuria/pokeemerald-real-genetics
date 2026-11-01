@@ -1,0 +1,46 @@
+name: Bug report
+description: Something in the game is broken or doesn't match the rules
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this! Please don't post ROMs or links to ROMs, those issues get closed.
+  - type: input
+    id: version
+    attributes:
+      label: Patch version
+      description: The version in the .bps file name, for example v1.0.0.
+    validations:
+      required: true
+  - type: checkboxes
+    id: rom
+    attributes:
+      label: ROM check
+      options:
+        - label: My Emerald ROM's SHA1 was f3ae088181bf583e55daf962a92bb46f4f1d07b7 before patching.
+          required: true
+  - type: input
+    id: emulator
+    attributes:
+      label: Emulator and device
+      description: For example mGBA 0.10 on Windows, or an emulator app on Android.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what happened, and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How do I make it happen?
+      description: Steps to get the bug again, if you know them.
+  - type: textarea
+    id: files
+    attributes:
+      label: Save file or screenshots
+      description: A zipped .sav or save state from right before the bug helps a lot. Drag files in here.

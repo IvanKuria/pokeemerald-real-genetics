@@ -1,8 +1,10 @@
-<!--- Provide a general summary of your changes in the Title above -->
+## What this changes
 
-## Description
-<!--- Describe your changes in detail -->
+<!-- What does this PR do, and why? -->
 
-## **Discord contact info**
-<!--- Formatted as username (e.g. pikalaxalt) or username#numbers (e.g. PikalaxALT#5823) -->
-<!--- Contributors must join https://discord.gg/d5dubZ3 -->
+## Checks
+
+- [ ] `make` builds
+- [ ] `tools/realgen/make_patch.sh` passes (vanilla SHA1 matches and the patch round-trips)
+- [ ] If the rules changed, REALGEN_SPEC.md and the README rules section are updated
+- [ ] No ROMs, saves or other game files are included

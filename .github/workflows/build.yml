@@ -1,43 +1,35 @@
 name: CI
 
+# Builds the mod on every push and pull request, checks that the vanilla build still matches retail
+# Emerald, makes the .bps patch and checks that it rebuilds the modded ROM exactly. The patch is
+# uploaded as a workflow artifact. Releases are handled by release.yml.
+
 on:
   push:
-    branches: [ master ]
+    branches: [ master, main ]
   pull_request:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      GAME_VERSION: EMERALD
-      GAME_REVISION: 0
-      GAME_LANGUAGE: ENGLISH
-      MODERN: 0
-      COMPARE: 1
     steps:
       - name: Checkout
-        uses: actions/checkout@master
-
-      - name: Checkout syms
-        if: ${{ github.event_name == 'push' }}
-        uses: actions/checkout@master
+        uses: actions/checkout@v4
         with:
-          path: symbols
-          ref: symbols
+          fetch-depth: 0   # make_patch.sh needs the history to find the upstream base commit
 
       - name: Checkout agbcc
-        uses: actions/checkout@master
+        uses: actions/checkout@v4
         with:
           path: agbcc
           repository: pret/agbcc
 
       - name: Install binutils
         run: |
-          sudo apt update
-          sudo apt install gcc-arm-none-eabi binutils-arm-none-eabi libpng-dev
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi libpng-dev
         # build-essential and git are already installed
         # gcc-arm-none-eabi is only needed for the modern build
-        # as an alternative to dkP
 
       - name: Install agbcc
         run: |
@@ -45,26 +37,25 @@ jobs:
           ./install.sh ../
         working-directory: agbcc
 
-      - name: Compare
-        run: make -j${nproc} all syms
+      - name: Fetch upstream pokeemerald
+        run: |
+          git remote add upstream https://github.com/pret/pokeemerald.git || git remote set-url upstream https://github.com/pret/pokeemerald.git
+          git fetch --no-tags upstream master
 
-      - name: Modern
+      - name: Test the BPS encoder and decoder
+        run: python3 tools/realgen/test_bps.py
+
+      - name: Build vanilla and modded ROMs, make and verify the patch
+        run: REALGEN_MAKE="make -j$(nproc)" tools/realgen/make_patch.sh
+
+      - name: Upload the patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-genetics-patch
+          path: dist/*.bps
+          if-no-files-found: error
+
+      - name: Modern compiler build
         env:
           MODERN: 1
-          COMPARE: 0
-        run: make -j${nproc} all
-
-      - name: Move symfiles
-        if: ${{ github.event_name == 'push' }}
-        run: |
-          cp -v *.sym symbols/
-          echo "SYMBOLS_COMMIT_MSG=$( git log --format=%s ${GITHUB_SHA} )" >> $GITHUB_ENV
-
-      - name: Update symfiles
-        if: ${{ github.event_name == 'push' }}
-        uses: EndBug/add-and-commit@v7
-        with:
-          branch: symbols
-          cwd: "./symbols"
-          add: "*.sym"
-          message: ${{ env.SYMBOLS_COMMIT_MSG }}
+        run: make -j$(nproc) all
