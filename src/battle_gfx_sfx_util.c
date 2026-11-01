@@ -12,6 +12,7 @@
 #include "random.h"
 #include "util.h"
 #include "pokemon.h"
+#include "genetics_palette.h"
 #include "constants/moves.h"
 #include "task.h"
 #include "sprite.h"
@@ -609,6 +610,7 @@ void BattleLoadOpponentMonSpriteGfx(struct Pokemon *mon, u8 battler)
         lzPaletteData = GetMonSpritePalFromSpeciesAndPersonality(species, otId, monsPersonality);
 
     LZDecompressWram(lzPaletteData, gDecompressionBuffer);
+    ApplyCoatToPalette((u16 *)gDecompressionBuffer, 1, GetMonCoat(mon));
     LoadPalette(gDecompressionBuffer, paletteOffset, PLTT_SIZE_4BPP);
     LoadPalette(gDecompressionBuffer, BG_PLTT_ID(8) + BG_PLTT_ID(battler), PLTT_SIZE_4BPP);
 
@@ -616,6 +618,7 @@ void BattleLoadOpponentMonSpriteGfx(struct Pokemon *mon, u8 battler)
     {
         paletteOffset = OBJ_PLTT_ID(battler);
         LZDecompressWram(lzPaletteData, gBattleStruct->castformPalette);
+        ApplyCoatToPalette(gBattleStruct->castformPalette[0], NUM_CASTFORM_FORMS, GetMonCoat(mon));
         LoadPalette(gBattleStruct->castformPalette[gBattleMonForms[battler]], paletteOffset, PLTT_SIZE_4BPP);
     }
 
@@ -672,6 +675,7 @@ void BattleLoadPlayerMonSpriteGfx(struct Pokemon *mon, u8 battler)
         lzPaletteData = GetMonSpritePalFromSpeciesAndPersonality(species, otId, monsPersonality);
 
     LZDecompressWram(lzPaletteData, gDecompressionBuffer);
+    ApplyCoatToPalette((u16 *)gDecompressionBuffer, 1, GetMonCoat(mon));
     LoadPalette(gDecompressionBuffer, paletteOffset, PLTT_SIZE_4BPP);
     LoadPalette(gDecompressionBuffer, BG_PLTT_ID(8) + BG_PLTT_ID(battler), PLTT_SIZE_4BPP);
 
@@ -679,6 +683,7 @@ void BattleLoadPlayerMonSpriteGfx(struct Pokemon *mon, u8 battler)
     {
         paletteOffset = OBJ_PLTT_ID(battler);
         LZDecompressWram(lzPaletteData, gBattleStruct->castformPalette);
+        ApplyCoatToPalette(gBattleStruct->castformPalette[0], NUM_CASTFORM_FORMS, GetMonCoat(mon));
         LoadPalette(gBattleStruct->castformPalette[gBattleMonForms[battler]], paletteOffset, PLTT_SIZE_4BPP);
     }
 
@@ -956,6 +961,7 @@ void HandleSpeciesGfxDataChange(u8 battlerAtk, u8 battlerDef, bool8 castform)
     else
     {
         u16 targetSpecies;
+        u8 coat;
 
         if (IsContest())
         {
@@ -1003,13 +1009,17 @@ void HandleSpeciesGfxDataChange(u8 battlerAtk, u8 battlerDef, bool8 castform)
         DmaCopy32Defvars(3, gMonSpritesGfxPtr->sprites.ptr[position], (void *)(OBJ_VRAM0 + gSprites[gBattlerSpriteIds[battlerAtk]].oam.tileNum * 32), MON_PIC_SIZE);
         paletteOffset = OBJ_PLTT_ID(battlerAtk);
         lzPaletteData = GetMonSpritePalFromSpeciesAndPersonality(targetSpecies, otId, personalityValue);
+        // like shininess, the transformed sprite keeps the user's own coat
+        coat = FindCoatByPersonality(personalityValue, otId);
         LZDecompressWram(lzPaletteData, gDecompressionBuffer);
+        ApplyCoatToPalette((u16 *)gDecompressionBuffer, 1, coat);
         LoadPalette(gDecompressionBuffer, paletteOffset, PLTT_SIZE_4BPP);
 
         if (targetSpecies == SPECIES_CASTFORM)
         {
             gSprites[gBattlerSpriteIds[battlerAtk]].anims = gMonFrontAnimsPtrTable[targetSpecies];
             LZDecompressWram(lzPaletteData, gBattleStruct->castformPalette);
+            ApplyCoatToPalette(gBattleStruct->castformPalette[0], NUM_CASTFORM_FORMS, coat);
             LoadPalette(gBattleStruct->castformPalette[gBattleMonForms[battlerDef]], paletteOffset, PLTT_SIZE_4BPP);
         }
 

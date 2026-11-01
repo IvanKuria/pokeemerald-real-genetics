@@ -1,4 +1,5 @@
 #include "global.h"
+#include "genetics_palette.h"
 #include "malloc.h"
 #include "battle_anim.h"
 #include "battle_interface.h"
@@ -2781,6 +2782,15 @@ static u32 TradeGetMultiplayerId(void)
     return 0;
 }
 
+// Real Genetics: a mon with a recoloured coat loads its palette under its own tag, so it never shares one with a
+// same-species, normal-coat mon on screen.
+static u16 GetTradeMonPaletteTag(struct Pokemon *mon, u8 whichParty)
+{
+    if (GetMonCoat(mon) != COAT_NORMAL)
+        return PALTAG_COAT_MON(whichParty);
+    return GetMonSpritePalStruct(mon)->tag;
+}
+
 static void LoadTradeMonPic(u8 whichParty, u8 state)
 {
     int pos = 0;
@@ -2811,12 +2821,18 @@ static void LoadTradeMonPic(u8 whichParty, u8 state)
         else
             HandleLoadSpecialPokePic_DontHandleDeoxys(&gMonFrontPicTable[species], gMonSpritesGfxPtr->sprites.ptr[whichParty * 2 + B_POSITION_OPPONENT_LEFT], species, personality);
 
-        LoadCompressedSpritePalette(GetMonSpritePalStruct(mon));
+        {
+            // both mons are on screen at once; a recoloured coat gets its own tag so a same-species partner keeps its own colours
+            struct CompressedSpritePalette pal = *GetMonSpritePalStruct(mon);
+            pal.tag = GetTradeMonPaletteTag(mon, whichParty);
+            LoadCompressedSpritePaletteWithCoat(&pal, GetMonCoat(mon));
+        }
         sTradeAnim->monSpecies[whichParty] = species;
         sTradeAnim->monPersonalities[whichParty] = personality;
         break;
     case 1:
         SetMultiuseSpriteTemplateToPokemon(GetMonSpritePalStruct(mon)->tag, pos);
+        gMultiuseSpriteTemplate.paletteTag = GetTradeMonPaletteTag(mon, whichParty);
         sTradeAnim->monSpriteIds[whichParty] = CreateSprite(&gMultiuseSpriteTemplate, 120, 60, 6);
         gSprites[sTradeAnim->monSpriteIds[whichParty]].invisible = TRUE;
         gSprites[sTradeAnim->monSpriteIds[whichParty]].callback = SpriteCallbackDummy;

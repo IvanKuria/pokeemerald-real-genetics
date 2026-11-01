@@ -26,6 +26,7 @@
 #include "text_window.h"
 #include "trig.h"
 #include "pokemon.h"
+#include "genetics_palette.h"
 #include "pokemon_jump.h"
 #include "constants/rgb.h"
 #include "constants/songs.h"
@@ -2736,7 +2737,7 @@ static void CreateJumpMonSprite(struct PokemonJumpGfx *jumpGfx, struct PokemonJu
 
         spritePalette.data = GetMonSpritePalFromSpeciesAndPersonality(monInfo->species, monInfo->otId, monInfo->personality);
         spritePalette.tag = multiplayerId;
-        LoadCompressedSpritePalette(&spritePalette);
+        LoadCompressedSpritePaletteWithCoat(&spritePalette, FindCoatByPersonality(monInfo->personality, monInfo->otId));
 
         Free(buffer);
         Free(unusedBuffer);

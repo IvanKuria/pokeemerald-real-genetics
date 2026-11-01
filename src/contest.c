@@ -1,4 +1,5 @@
 #include "global.h"
+#include "genetics_palette.h"
 #include "gpu_regs.h"
 #include "bg.h"
 #include "malloc.h"
@@ -3128,7 +3129,7 @@ static u8 CreateContestantSprite(u16 species, u32 otId, u32 personality, u32 ind
     else
         HandleLoadSpecialPokePic_DontHandleDeoxys(&gMonBackPicTable[species], gMonSpritesGfxPtr->sprites.ptr[B_POSITION_PLAYER_LEFT], species, personality);
 
-    LoadCompressedPalette(GetMonSpritePalFromSpeciesAndPersonality(species, otId, personality), OBJ_PLTT_ID(2), PLTT_SIZE_4BPP);
+    LoadCompressedPaletteWithCoat(GetMonSpritePalFromSpeciesAndPersonality(species, otId, personality), OBJ_PLTT_ID(2), PLTT_SIZE_4BPP, FindCoatByPersonality(personality, otId));
     SetMultiuseSpriteTemplateToPokemon(species, B_POSITION_PLAYER_LEFT);
 
     spriteId = CreateSprite(&gMultiuseSpriteTemplate, 0x70, GetBattlerSpriteFinal_Y(2, species, FALSE), 30);

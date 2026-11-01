@@ -102,6 +102,7 @@ SECTIONS {
         src/util.o(.text);
         src/daycare.o(.text);
         src/genetics.o(.text);
+        src/genetics_palette.o(.text);
         src/egg_hatch.o(.text);
         src/battle_interface.o(.text);
         src/battle_anim_smokescreen.o(.text);
@@ -490,6 +491,7 @@ SECTIONS {
         src/util.o(.rodata);
         src/daycare.o(.rodata);
         src/genetics.o(.rodata);
+        src/genetics_palette.o(.rodata);
         src/egg_hatch.o(.rodata);
         src/battle_gfx_sfx_util.o(.rodata);
         src/battle_interface.o(.rodata);
