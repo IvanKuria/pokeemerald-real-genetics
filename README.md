@@ -98,11 +98,13 @@ So IVs only come in 11 values: 0, 3, 6, 9, 12, 16, 19, 22, 25, 28 and 31. Most w
 
 Every real animal, including you, carries a few hidden broken genes that would be deadly with two copies. In people it's about 0.58 on average, so wild Pokémon carry the same amount. If an egg ends up with two copies of the same broken gene, it never hatches. When it's time to hatch you'll get "The EGG didn't hatch…" and the egg is gone.
 
-Breeding two random wild Pokémon pretty much never runs into this. Breeding Pokémon that are related to each other (siblings, or a parent and its baby) runs into it a lot more, because they're likely to carry the same broken genes.
+Breeding two random wild Pokémon pretty much never runs into this (about 1 egg in 2,700). Breeding Pokémon that are related to each other (siblings, or a parent and its baby) runs into it a lot more, about 1 egg in 23 for siblings, because they're likely to carry the same broken genes. That's a bit lower than the 1 in 14 from the video, because the save data only has room to track one broken gene per Pokémon.
 
 ### Same species only
 
 Only Pokémon from the same evolution family can breed now. So Pikachu can breed with Raichu, but Pikachu and Eevee can't, even though they're in the same egg group in the normal game. In real life, different species almost never have fertile babies (that's why mules can't have babies).
+
+Two small exceptions: Nidoran♀ and Nidoran♂ count as one family, and so do Volbeat and Illumise, because they're basically the female and male of the same Pokémon. And a heads up, species that only come in one gender and don't have a partner like that (Tauros, Miltank, the Hitmon line) can only breed with Ditto now, which means clones.
 
 ### Ditto makes clones
 
@@ -114,9 +116,9 @@ Egg timing, the Day Care itself, natures (including the Everstone), gender, abil
 
 ## What's different and known limitations
 
-- **It doesn't use any new save space.** The genes are packed into bits of the save data the game never uses. That includes 11 ribbon bits for ribbons that you can never earn in Emerald (Marine, Land, Sky, Country, National, Earth, World, plus four unused ones). If you bring in a Pokémon that already has one of those ribbons from another game, the ribbon and its genes will get mixed up.
+- **It doesn't use any new save space.** The genes are packed into bits of the save data the game never uses. That includes 11 ribbon bits for ribbons that you can never earn in Emerald (Marine, Land, Sky, Country, National, Earth, World, plus four unused ones). If you bring in a Pokémon from another game (like Colosseum or XD) that actually has one of those ribbons, the ribbon gets wiped the first time the game writes its genes.
 - **Trading with an unmodded game sends weird IVs.** The bits where normal Emerald keeps IVs are used for genes here, so a Pokémon you trade to a normal game (or to Ruby, Sapphire, FireRed, LeafGreen, Colosseum or XD) shows up over there with IVs that look random. Going the other way is fine: a Pokémon from a normal game gets genes made up from its IVs, with normal colouring and no broken genes.
-- **Party and PC icons stay the normal colour.** The coloured version shows in battle, the summary screen and when an egg hatches, but the little menu icons and the Pokédex use the normal palette.
+- **Party and PC icons stay the normal colour.** The coloured version shows in battle, on the summary screen, when an egg hatches, when evolving or trading, in contests and in the PC's big preview, but the little menu icons and the Pokédex entries use the normal palette. Also, albino eyes go pale instead of red, because the game doesn't know which pixels are eyes.
 - **Fixed IVs get rounded.** Anything in the game that sets IVs directly (like trainer Pokémon) gets rounded to the nearest of the 11 possible values.
 - **I haven't tested it on a real GBA or a flash cart.** It should work like any other patch, but I've only played it in emulators.
 
