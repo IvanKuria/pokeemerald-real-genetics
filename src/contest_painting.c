@@ -1,4 +1,5 @@
 #include "global.h"
+#include "genetics_palette.h"
 #include "malloc.h"
 #include "battle.h"
 #include "battle_gfx_sfx_util.h"
@@ -365,6 +366,7 @@ static void InitContestMonPixels(u16 species, bool8 backPic)
 {
     const void *pal = GetMonSpritePalFromSpeciesAndPersonality(species, gContestPaintingWinner->trainerId, gContestPaintingWinner->personality);
     LZDecompressVram(pal, gContestPaintingMonPalette);
+    ApplyCoatToPalette(gContestPaintingMonPalette, 1, FindCoatByPersonality(gContestPaintingWinner->personality, gContestPaintingWinner->trainerId));
     if (!backPic)
     {
         HandleLoadSpecialPokePic_DontHandleDeoxys(

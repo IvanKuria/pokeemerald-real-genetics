@@ -1,5 +1,6 @@
 #include "global.h"
 #include "pokemon.h"
+#include "genetics_palette.h"
 #include "egg_hatch.h"
 #include "pokedex.h"
 #include "constants/items.h"
@@ -488,7 +489,7 @@ static u8 EggHatchCreateMonSprite(u8 useAlt, u8 state, u8 partyId, u16 *speciesL
             HandleLoadSpecialPokePic_DontHandleDeoxys(&gMonFrontPicTable[species],
                                                       gMonSpritesGfxPtr->sprites.ptr[(useAlt * 2) + B_POSITION_OPPONENT_LEFT],
                                                       species, pid);
-            LoadCompressedSpritePalette(GetMonSpritePalStruct(mon));
+            LoadCompressedSpritePaletteWithCoat(GetMonSpritePalStruct(mon), GetMonCoat(mon));
             *speciesLoc = species;
         }
         break;

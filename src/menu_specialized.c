@@ -1,4 +1,5 @@
 #include "global.h"
+#include "genetics_palette.h"
 #include "malloc.h"
 #include "battle_main.h"
 #include "contest_effect.h"
@@ -1077,6 +1078,7 @@ void GetConditionMenuMonGfx(void *tilesDst, void *palDst, u16 boxId, u16 monId, 
 
         LoadSpecialPokePic(&gMonFrontPicTable[species], tilesDst, species, personality, TRUE);
         LZ77UnCompWram(GetMonSpritePalFromSpeciesAndPersonality(species, trainerId, personality), palDst);
+        ApplyCoatToPalette(palDst, 1, FindCoatByPersonality(personality, trainerId));
     }
 }
 
