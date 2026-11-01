@@ -41,6 +41,7 @@
 #include "constants/game_stat.h"
 #include "battle.h" // to get rid of later
 #include "constants/rgb.h"
+#include "realgen_test.h"
 
 #define GFXTAG_EGG       12345
 #define GFXTAG_EGG_SHARD 23456
@@ -644,6 +645,15 @@ static void Task_EggHatchPlayBGM(u8 taskId)
     }
     gTasks[taskId].tTimer++;
 }
+
+#if REALGEN_TEST
+u8 RealgenTest_EggHatchState(void)
+{
+    if (gMain.callback2 != CB2_EggHatch || sEggHatchData == NULL)
+        return 0xFF;
+    return sEggHatchData->state;
+}
+#endif
 
 static void CB2_EggHatch(void)
 {

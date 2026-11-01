@@ -53,3 +53,6 @@ dist/
 *.srm
 __pycache__/
 build.log
+
+# Real genetics in-ROM test screenshots (test/realgen/rom_test.sh)
+/shots/

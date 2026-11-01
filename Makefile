@@ -86,6 +86,13 @@ else
   ROM := $(MODERN_ROM_NAME)
   OBJ_DIR := $(MODERN_OBJ_DIR_NAME)
 endif
+# Real genetics test build (src/realgen_test.c): `make REALGEN_TEST=1` writes its own ROM from its own objects,
+# so the shipped pokeemerald.gba never contains the test hooks.
+REALGEN_TEST ?= 0
+ifeq ($(REALGEN_TEST),1)
+  ROM := $(FILE_NAME)_realgen_test.gba
+  OBJ_DIR := $(BUILD_DIR)/realgen_test
+endif
 ELF := $(ROM:.gba=.elf)
 MAP := $(ROM:.gba=.map)
 SYM := $(ROM:.gba=.sym)
@@ -112,7 +119,7 @@ INCLUDE_CPP_ARGS := $(INCLUDE_DIRS:%=-iquote %)
 INCLUDE_SCANINC_ARGS := $(INCLUDE_DIRS:%=-I %)
 
 O_LEVEL ?= 2
-CPPFLAGS := $(INCLUDE_CPP_ARGS) -Wno-trigraphs -DMODERN=$(MODERN)
+CPPFLAGS := $(INCLUDE_CPP_ARGS) -Wno-trigraphs -DMODERN=$(MODERN) -DREALGEN_TEST=$(REALGEN_TEST)
 ifeq ($(MODERN),0)
   CPPFLAGS += -I tools/agbcc/include -I tools/agbcc -nostdinc -undef -std=gnu89
   CC1 := tools/agbcc/bin/agbcc$(EXE)

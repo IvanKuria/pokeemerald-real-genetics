@@ -66,6 +66,7 @@
 #include "constants/songs.h"
 #include "constants/trainer_hill.h"
 #include "constants/weather.h"
+#include "realgen_test.h"
 
 struct CableClubPlayer
 {
@@ -1541,6 +1542,11 @@ void CB2_NewGame(void)
     UnlockPlayerFieldControls();
     gFieldCallback = ExecuteTruckSequence;
     gFieldCallback2 = NULL;
+#if REALGEN_TEST
+    // test build: no truck, start on Route 117 by the Day Care (see src/realgen_test.c)
+    RealgenTest_NewGame();
+    gFieldCallback = NULL;
+#endif
     DoMapLoadLoop(&gMain.state);
     SetFieldVBlankCallback();
     SetMainCallback1(CB1_Overworld);
