@@ -22,6 +22,7 @@
 #include "text.h"
 #include "intro.h"
 #include "main.h"
+#include "realgen_test.h"
 #include "trainer_hill.h"
 #include "constants/rgb.h"
 
@@ -131,6 +132,9 @@ void AgbMain(void)
     for (;;)
     {
         ReadKeys();
+#if REALGEN_TEST
+        RealgenTest_Frame();
+#endif
 
         if (gSoftResetDisabled == FALSE
          && JOY_HELD_RAW(A_BUTTON)
